@@ -7,12 +7,14 @@
 #include <functional>
 #include <future>
 #include <atomic>
+#include <utility>
+#include <memory>
 
-template<typename T=std::function<int(void*)> , typename taskqueue=std::queue<T>>
+template<typename taskqueue=std::queue<std::function<int(void*)>>>
 class thread_pool {
 	public:
 		thread_pool(const int max_thread_count ,const int max_task_count) ;
-		virtual ~thread_pool();
+		virtual ~thread_pool(){}
 
 		thread_pool(const thread_pool& tp) = delete ;
 		thread_pool(const thread_pool&& tp) = delete ;
@@ -21,14 +23,28 @@ class thread_pool {
 
 		bool run() ;
 		bool add_task(std::function<int(void* arg)> task) ;
+		int thread_routine(void * args) ;
 	private:
-		std::atomic<int> alivecount ; 
+		std::atomic<int> alive_thread_count ; 
+		std::atomic<int> task_curr_count ; 
 		std::atomic<int> task_count ;
 		std::atomic<bool> terminated ;
 		taskqueue task_queue ;
-		// std::queue<std::packaged_task<int(void* arg)>> task_queue;	
 		std::mutex lock ;
 		std::condition_variable  cond ; 
-		std::thread * thread_ptr ;
+		std::unique_ptr<std::thread>  thread_ptr ;
 } ;
+
+template<typename taskqueue>
+thread_pool<taskqueue>::thread_pool(const int max_thread_count , const int max_task_count) {
+	task_count.store(max_task_count , std::memory_order_relaxed) ;	
+	task_curr_count.store(0 , std::memory_order_relaxed) ;	
+	terminated.store(false , std::memory_order_relaxed) ;
+	
+	thread_ptr = std::make_unique<std::thread>(new std::thread{thread_routine(this)}[max_thread_count])	 ;
+	task_count.store(max_thread_count , std::memory_order_relaxed) ;
+}
+
+template <typename taskqueue>
+
 
