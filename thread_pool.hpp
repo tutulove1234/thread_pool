@@ -54,13 +54,14 @@ bool thread_pool<taskqueue>::run() {
 	alive_thread_count.store(max_thread_count,std::memory_order_relaxed) ;
 }
 
+// add template 
 template <typename taskqueue>
-bool thread_pool<taskqueue>::add_task(std::function<int(void* arg)> task) {
+bool thread_pool<taskqueue>::add_task(std::function<int(void* arg)> task , ) {
 	if ( task_curr_count.load(std::memory_order_acquire) >= max_task_count) {
 		return false ;
 	}
 	std::unique_lock<std::mutex> l{lock} ;
-	task_queue.push_back(task) ;
+	task_queue.emplace_back(task) ;
 	cond.notify_one() ;
 	task_curr_count.fetch_add(1 , std::memory_order_release) ;
 	return true ;
@@ -74,9 +75,9 @@ int thread_pool<taskqueue>::thread_routine() {
 	while ( terminated.load(std::memory_order_relaxed)) {
 		if ( task_curr_count.load(std::memory_order_acquire) > 0 ) {
 			std::unique_lock<std::mutex> l{lock} ;			
-			if ( task_curr_count.load(std::memory_order_acquire)) {
-				
-			}
+			std::function<int (void*arg)> task = task_queue.emplace_front() ;
+			task_curr_count.fetch_sub(1, std::memory_order_release) ;
+
 		} else {
 			cond.wait(lock) ;
 		}
