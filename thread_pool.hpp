@@ -23,7 +23,11 @@ class thread_pool {
 		thread_pool& operator=(const thread_pool&& src) = delete ;
 
 		bool run() ;
-		bool add_task(std::function<int(void* arg)> task) ;
+		bool stop() ;
+		template<typename func , typename ...Args>
+		bool add_task(func function, Args ...arg) ;
+		template<typename func>
+		bool add_task(func function) ;
 		int thread_routine() ;
 	private:
 		std::atomic<int> alive_thread_count ; 
@@ -56,7 +60,8 @@ bool thread_pool<taskqueue>::run() {
 
 // add template 
 template <typename taskqueue>
-bool thread_pool<taskqueue>::add_task(std::function<int(void* arg)> task , ) {
+template <typename func , typename ...Args>
+bool thread_pool<taskqueue>::add_task(func function , Args ...arg) {
 	if ( task_curr_count.load(std::memory_order_acquire) >= max_task_count) {
 		return false ;
 	}
@@ -65,6 +70,12 @@ bool thread_pool<taskqueue>::add_task(std::function<int(void* arg)> task , ) {
 	cond.notify_one() ;
 	task_curr_count.fetch_add(1 , std::memory_order_release) ;
 	return true ;
+}
+
+template <typename taskqueue>
+template <typename func , typename ...Args>
+bool thread_pool<taskqueue>::add_task(std::function<int(void* arg)> task) {
+
 }
 
 // real thread routine 
@@ -77,10 +88,19 @@ int thread_pool<taskqueue>::thread_routine() {
 			std::unique_lock<std::mutex> l{lock} ;			
 			std::function<int (void*arg)> task = task_queue.emplace_front() ;
 			task_curr_count.fetch_sub(1, std::memory_order_release) ;
-
 		} else {
 			cond.wait(lock) ;
 		}
+	}
+	return 0 ;
+}
+
+template<typename taskqueue>
+bool thread_pool<taskqueue>::stop () {
+	terminated.store(true ,std::memory_order_release) ;
+	cond.notify_all() ;
+	for( int i = 0 ; i < max_thread_count ; i++ ) {
+		threads[i].join() ;
 	}
 }
 
