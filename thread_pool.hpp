@@ -25,9 +25,8 @@ class thread_pool {
 		bool run() ;
 		bool stop() ;
 		template<typename func , typename ...Args>
-		bool add_task(func function, Args ...arg) ;
-		template<typename func>
-		bool add_task(func function) ;
+		bool add_task(func&& function, Args&& ...arg) ;
+		bool add_task(std::function<void(void)> func) ;
 		int thread_routine() ;
 	private:
 		std::atomic<int> alive_thread_count ; 
@@ -61,21 +60,30 @@ bool thread_pool<taskqueue>::run() {
 // add template 
 template <typename taskqueue>
 template <typename func , typename ...Args>
-bool thread_pool<taskqueue>::add_task(func function , Args ...arg) {
+bool thread_pool<taskqueue>::add_task(func&& f , Args&& ...arg) {
 	if ( task_curr_count.load(std::memory_order_acquire) >= max_task_count) {
 		return false ;
 	}
+	auto pkg = std::make_shared<std::packaged_task<void(void*)>>(std::bind(std::forward<func>(f),std::placeholders::_1, std::forward<Args>(arg)...));
+	auto _f = std::function<void(void*)>([pkg](void* arg) {
+		(*pkg)(arg);
+	}) ;
 	std::unique_lock<std::mutex> l{lock} ;
-	task_queue.emplace_back(task) ;
+	task_queue.emplace_back(_f) ;
 	cond.notify_one() ;
 	task_curr_count.fetch_add(1 , std::memory_order_release) ;
 	return true ;
 }
 
 template <typename taskqueue>
-template <typename func , typename ...Args>
-bool thread_pool<taskqueue>::add_task(std::function<int(void* arg)> task) {
-
+bool thread_pool<taskqueue>::add_task(std::function<void(void)> task) {
+	if ( task_curr_count.load(std::memory_order_acquire) >= max_task_count) {
+		return false ;
+	}
+	auto pkg = std::make_shared<decltype(task)>(task);	
+	auto _f = std::function<void(void*)>([pkg](void* arg=nullptr) {
+		(*pkg)(arg) ;
+	});
 }
 
 // real thread routine 
